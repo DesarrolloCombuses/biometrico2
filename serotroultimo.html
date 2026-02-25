@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
@@ -701,11 +701,7 @@
         <div class="welcome-card">
             <div class="welcome-icon">🚌</div>
             <h1 class="welcome-title">Control Biométrico de Flota Combuses</h1>
-            <p style="margin-bottom: 30px;">Sistema de verificación facial para conductores</p>
-            
-            <button class="btn-welcome" onclick="iniciarVerificacion()">
-                🔐 VERIFICAR IDENTIDAD
-            </button>
+            <p style="margin-bottom: 30px;">Inicia sesión administrativa para operar el sistema</p>
             
             <button class="btn-welcome btn-welcome-secondary" onclick="mostrarLogin()">
                 👤 ACCESO ADMINISTRATIVO
@@ -889,7 +885,10 @@
 
             <div id="turnosPanel">
                 <!-- Turnos Activos -->
-                <h3>Turnos Activos</h3>
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+                    <h3>Turnos Activos</h3>
+                    <button class="btn btn-success" onclick="verificarConductorDesdeDashboard()">🔐 Verificar Conductor</button>
+                </div>
                 <div id="turnosGrid" class="turnos-grid"></div>
 
                 <!-- Consulta de turnos -->
@@ -996,6 +995,10 @@
         let conductoresPorVehiculo = new Map();
         let accionPendientePostLogin = null;
         let seccionDashboardActual = 'registros';
+        let verificacionTimeoutId = null;
+        let conductorPlayHandler = null;
+        let adminPlayHandler = null;
+        let retornoVerificacion = 'dashboard';
         const CONSULTA_PAGE_SIZE = 8;
         let consultaTurnosState = {
             turnos: [],
@@ -1368,16 +1371,25 @@
                 return;
             }
 
+            resetEstadoVerificacionConductor();
             document.getElementById('welcomeScreen').classList.add('hidden');
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('dashboardScreen').classList.add('hidden');
             document.getElementById('verificationScreen').classList.remove('hidden');
             document.getElementById('vehicleScreen').classList.add('hidden');
             document.getElementById('resultContainer').classList.add('hidden');
             await iniciarCamara(video, 'conductor');
         }
 
+        async function verificarConductorDesdeDashboard() {
+            retornoVerificacion = 'dashboard';
+            await iniciarVerificacion();
+        }
+
         function cancelarVerificacion() {
             detenerCamara(video);
-            volverInicio();
+            resetEstadoVerificacionConductor();
+            volverDesdeVerificacion();
         }
 
         function volverAVerificacion() {
@@ -1404,6 +1416,39 @@
             cargarVehiculosDisponibles();
         }
 
+        function resetEstadoVerificacionConductor() {
+            deteccionActiva = false;
+            verificacionEnProgreso = false;
+            progresoCaptura = 0;
+            if (verificacionTimeoutId) {
+                clearTimeout(verificacionTimeoutId);
+                verificacionTimeoutId = null;
+            }
+            const circle = document.getElementById('faceCircle');
+            const instruction = document.getElementById('instructionBox');
+            const progress = document.getElementById('progressBar');
+            const status = document.getElementById('statusMessage');
+            if (circle) circle.className = 'face-guide-circle';
+            if (instruction) instruction.innerText = 'Coloca tu rostro dentro del círculo';
+            if (progress) progress.style.width = '0%';
+            if (status) status.innerText = 'Buscando rostro...';
+        }
+
+        async function volverDesdeVerificacion() {
+            document.getElementById('verificationScreen').classList.add('hidden');
+            document.getElementById('vehicleScreen').classList.add('hidden');
+            document.getElementById('resultContainer').classList.add('hidden');
+            detenerCamara(video);
+            resetEstadoVerificacionConductor();
+
+            if (retornoVerificacion === 'dashboard' && usuarioActual) {
+                await mostrarDashboard();
+                await mostrarSeccionDashboard('registros');
+            } else {
+                volverInicio();
+            }
+        }
+
         // ============================================
         // CÁMARA Y BIOMETRÍA
         // ============================================
@@ -1426,14 +1471,18 @@
                 if (tipo === 'admin') {
                     elementoVideo.classList.add('active');
                     crearGuiaFacialAdmin();
-                    elementoVideo.addEventListener('play', () => {
-                        iniciarDeteccionAdmin();
-                    });
+                    if (adminPlayHandler) {
+                        elementoVideo.removeEventListener('play', adminPlayHandler);
+                    }
+                    adminPlayHandler = () => iniciarDeteccionAdmin();
+                    elementoVideo.addEventListener('play', adminPlayHandler, { once: true });
                     document.getElementById('adminStatusMessage').innerText = 'Posiciona el rostro dentro del círculo';
                 } else {
-                    elementoVideo.addEventListener('play', () => {
-                        iniciarDeteccionConductor();
-                    });
+                    if (conductorPlayHandler) {
+                        elementoVideo.removeEventListener('play', conductorPlayHandler);
+                    }
+                    conductorPlayHandler = () => iniciarDeteccionConductor();
+                    elementoVideo.addEventListener('play', conductorPlayHandler, { once: true });
                     document.getElementById('statusMessage').innerText = 'Coloca tu rostro dentro del círculo';
                 }
                 
@@ -1453,8 +1502,19 @@
             }
             if (elementoVideo === video) {
                 deteccionActiva = false;
+                verificacionEnProgreso = false;
+                if (verificacionTimeoutId) {
+                    clearTimeout(verificacionTimeoutId);
+                    verificacionTimeoutId = null;
+                }
+                if (conductorPlayHandler) {
+                    elementoVideo.removeEventListener('play', conductorPlayHandler);
+                }
             } else {
                 capturaAdminActiva = false;
+                if (adminPlayHandler) {
+                    elementoVideo.removeEventListener('play', adminPlayHandler);
+                }
                 const guia = document.getElementById('adminFaceGuide');
                 if (guia) guia.remove();
             }
@@ -1485,9 +1545,19 @@
         function iniciarDeteccionConductor() {
             if (deteccionActiva) return;
             
+            if (verificacionTimeoutId) {
+                clearTimeout(verificacionTimeoutId);
+                verificacionTimeoutId = null;
+            }
             deteccionActiva = true;
             verificacionEnProgreso = true;
             progresoCaptura = 0;
+            verificacionTimeoutId = setTimeout(() => {
+                if (verificacionEnProgreso && progresoCaptura < 100) {
+                    document.getElementById('statusMessage').innerText = 'Reiniciando captura por tiempo de espera...';
+                    reintentarVerificacion();
+                }
+            }, 15000);
             
             const detectar = async () => {
                 if (!deteccionActiva || !video || video.paused) return;
@@ -1507,7 +1577,7 @@
                         const offsetX = Math.abs(centerX / video.videoWidth - targetX);
                         const offsetY = Math.abs(centerY / video.videoHeight - targetY);
                         
-                        const bienPosicionado = offsetX < 0.1 && offsetY < 0.1;
+                        const bienPosicionado = offsetX < 0.13 && offsetY < 0.13;
                         
                         if (bienPosicionado) {
                             document.getElementById('faceCircle').className = 'face-guide-circle success';
@@ -1517,6 +1587,10 @@
                             document.getElementById('progressBar').style.width = progresoCaptura + '%';
                             
                             if (progresoCaptura >= 100) {
+                                if (verificacionTimeoutId) {
+                                    clearTimeout(verificacionTimeoutId);
+                                    verificacionTimeoutId = null;
+                                }
                                 await capturarYVerificar();
                             }
                         } else {
@@ -1788,12 +1862,12 @@
                     
                     actionButtons.innerHTML = `
                         <button class="btn-action btn-action-danger" onclick="registrarSalida()">REGISTRAR SALIDA</button>
-                        <button class="btn-action btn-action-primary" onclick="volverInicio()">VOLVER</button>
+                        <button class="btn-action btn-action-primary" onclick="volverDesdeVerificacion()">VOLVER</button>
                     `;
                 } else {
                     actionButtons.innerHTML = `
                         <button class="btn-action btn-action-success" onclick="mostrarSeleccionVehiculo()">REGISTRAR INGRESO</button>
-                        <button class="btn-action btn-action-primary" onclick="volverInicio()">VOLVER</button>
+                        <button class="btn-action btn-action-primary" onclick="volverDesdeVerificacion()">VOLVER</button>
                     `;
                 }
                 
@@ -1813,7 +1887,7 @@
                 
                 actionButtons.innerHTML = `
                     <button class="btn-action btn-action-warning" onclick="reintentarVerificacion()">REINTENTAR</button>
-                    <button class="btn-action btn-action-primary" onclick="volverInicio()">VOLVER</button>
+                    <button class="btn-action btn-action-primary" onclick="volverDesdeVerificacion()">VOLVER</button>
                 `;
                 
             } else {
@@ -1825,7 +1899,7 @@
                 
                 actionButtons.innerHTML = `
                     <button class="btn-action btn-action-warning" onclick="reintentarVerificacion()">REINTENTAR</button>
-                    <button class="btn-action btn-action-primary" onclick="volverInicio()">VOLVER</button>
+                    <button class="btn-action btn-action-primary" onclick="volverDesdeVerificacion()">VOLVER</button>
                 `;
             }
             
@@ -1835,15 +1909,14 @@
         }
 
         function reintentarVerificacion() {
+            resetEstadoVerificacionConductor();
             document.getElementById('resultContainer').classList.add('hidden');
             document.querySelector('.face-guide-overlay').style.display = 'block';
-            deteccionActiva = true;
-            verificacionEnProgreso = true;
-            progresoCaptura = 0;
-            document.getElementById('progressBar').style.width = '0%';
             
             if (!video.srcObject) {
                 iniciarCamara(video, 'conductor');
+            } else {
+                iniciarDeteccionConductor();
             }
         }
 
@@ -2584,7 +2657,9 @@
         window.volverInicio = volverInicio;
         window.mostrarLogin = mostrarLogin;
         window.iniciarVerificacion = iniciarVerificacion;
+        window.verificarConductorDesdeDashboard = verificarConductorDesdeDashboard;
         window.cancelarVerificacion = cancelarVerificacion;
+        window.volverDesdeVerificacion = volverDesdeVerificacion;
         window.reintentarVerificacion = reintentarVerificacion;
         window.volverAVerificacion = volverAVerificacion;
         window.mostrarSeleccionVehiculo = mostrarSeleccionVehiculo;
@@ -2605,6 +2680,14 @@
     </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
 
 
 
