@@ -392,6 +392,7 @@
         .dashboard-screen {
             min-height: 100vh;
             background: #f8f9fa;
+            overflow-x: hidden;
         }
 
         .dashboard-nav {
@@ -656,6 +657,79 @@
             box-shadow: 0 5px 20px rgba(0, 0, 0, 0.05);
         }
 
+        .biometricos-panel-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .biometricos-panel-grid > .admin-section {
+            min-width: 0;
+        }
+
+        .biometricos-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
+        .biometricos-tabla-wrap {
+            overflow-x: auto;
+            background: white;
+            border-radius: 10px;
+            border: 1px solid #e8edf3;
+        }
+
+        .biometricos-tabla {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 0;
+            table-layout: fixed;
+        }
+
+        .biometricos-tabla th,
+        .biometricos-tabla td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #edf2f7;
+            text-align: left;
+            font-size: 13px;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+
+        .biometricos-tabla th {
+            background: #f3f6fb;
+            color: #334155;
+            font-weight: 700;
+        }
+
+        .estado-chip {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .estado-chip.ok {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .estado-chip.warn {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        @media (max-width: 900px) {
+            .biometricos-panel-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
         .consulta-filtros {
             display: flex;
             gap: 10px;
@@ -811,6 +885,7 @@
         <div class="dashboard-content">
             <div class="dashboard-tabs">
                 <button id="tabBiometria" class="dashboard-tab" onclick="mostrarSeccionDashboard('biometria')">Registrar Biométrico</button>
+                <button id="tabBiometricos" class="dashboard-tab" onclick="mostrarSeccionDashboard('biometricos')">Biométricos</button>
                 <button id="tabRegistros" class="dashboard-tab" onclick="mostrarSeccionDashboard('registros')">Registros</button>
                 <button id="tabVehiculos" class="dashboard-tab" onclick="mostrarSeccionDashboard('vehiculos')">Ver Vehículos</button>
             </div>
@@ -856,6 +931,8 @@
                             </div>
                             <p id="adminStatusMessage" style="margin: 10px 0;">Preparando cámara...</p>
                             <div style="display: flex; gap: 10px; justify-content: center;">
+                                <button class="btn btn-warning" onclick="repetirCapturaAdmin()">Repetir Captura</button>
+                                <button class="btn btn-primary" onclick="probarReconocimientoAdmin()">Probar Reconocimiento</button>
                                 <button class="btn btn-danger" onclick="cancelarCapturaAdmin()">Cancelar</button>
                             </div>
                         </div>
@@ -879,6 +956,61 @@
                             </div>
                         </div>
                         <button class="btn btn-warning" style="width: 100%; margin-top: 15px;" onclick="cargarBaseBiometricaAdmin()">Actualizar Base Biométrica</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="biometricosPanel" class="admin-panel hidden">
+                <h3>👥 Estado Biométrico de Conductores</h3>
+                <div class="biometricos-toolbar">
+                    <input
+                        type="text"
+                        id="filtroBiometricosPanel"
+                        placeholder="Buscar por nombre, cédula, email o flota..."
+                        oninput="filtrarPanelBiometricos()"
+                        style="max-width: 420px; width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 10px;">
+                    <div id="biometricosResumen" style="color: #475569; font-size: 13px;"></div>
+                </div>
+                <div class="biometricos-panel-grid">
+                    <div class="admin-section">
+                        <h4>✅ Con biométrico (<span id="totalConBiometrico">0</span>)</h4>
+                        <div class="biometricos-tabla-wrap">
+                            <table class="biometricos-tabla">
+                                <thead>
+                                    <tr>
+                                        <th>Nombre</th>
+                                        <th>Cédula</th>
+                                        <th>Email</th>
+                                        <th>Flota</th>
+                                        <th>Status</th>
+                                        <th>Fecha registro</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="biometricosRegistradosBody">
+                                    <tr><td colspan="6" style="text-align:center; color:#64748b;">Sin datos</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="admin-section">
+                        <h4>⚠️ Faltan biométrico (<span id="totalFaltanBiometrico">0</span>)</h4>
+                        <div class="biometricos-tabla-wrap">
+                            <table class="biometricos-tabla">
+                                <thead>
+                                    <tr>
+                                        <th>Nombre</th>
+                                        <th>Cédula</th>
+                                        <th>Email</th>
+                                        <th>Flota</th>
+                                        <th>Status</th>
+                                        <th>Estado</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="biometricosFaltantesBody">
+                                    <tr><td colspan="6" style="text-align:center; color:#64748b;">Sin datos</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -999,6 +1131,8 @@
         let conductorPlayHandler = null;
         let adminPlayHandler = null;
         let retornoVerificacion = 'dashboard';
+        let filtroBiometricosTexto = '';
+        let ultimoDescriptorAdmin = null;
         const CONSULTA_PAGE_SIZE = 8;
         let consultaTurnosState = {
             turnos: [],
@@ -1261,6 +1395,7 @@
         function setTabDashboardActiva(seccion) {
             const tabs = {
                 biometria: document.getElementById('tabBiometria'),
+                biometricos: document.getElementById('tabBiometricos'),
                 registros: document.getElementById('tabRegistros'),
                 vehiculos: document.getElementById('tabVehiculos')
             };
@@ -1273,10 +1408,12 @@
         async function mostrarSeccionDashboard(seccion) {
             seccionDashboardActual = seccion;
             const biometria = document.getElementById('biometriaPanel');
+            const biometricos = document.getElementById('biometricosPanel');
             const turnos = document.getElementById('turnosPanel');
             const vehiculos = document.getElementById('vehiculosView');
 
             if (biometria) biometria.classList.toggle('hidden', seccion !== 'biometria');
+            if (biometricos) biometricos.classList.toggle('hidden', seccion !== 'biometricos');
             if (turnos) turnos.classList.toggle('hidden', seccion !== 'registros');
             if (vehiculos) vehiculos.classList.toggle('hidden', seccion !== 'vehiculos');
             setTabDashboardActiva(seccion);
@@ -1289,6 +1426,10 @@
                 await cargarTurnosActivos();
                 inicializarFechaConsultaTurnos();
                 await consultarTurnosPorFecha();
+            }
+
+            if (seccion === 'biometricos') {
+                renderizarPanelBiometricos();
             }
         }
 
@@ -1762,6 +1903,7 @@
                 alert('No se pudo capturar el rostro. Intente nuevamente.');
                 return;
             }
+            ultimoDescriptorAdmin = descriptor;
             
             const payload = {
                 dr_id: conductorSeleccionado.dr_id,
@@ -1787,15 +1929,21 @@
                 }
                 
                 // Actualizar cache
-                biometricCache.data.push({
+                const registroActualizado = {
                     ...payload,
                     descriptor: descriptor
-                });
-                
+                };
+                const indiceExistente = biometricCache.data.findIndex(
+                    item => normalizarCedula(item.cedula) === normalizarCedula(payload.cedula)
+                );
+                if (indiceExistente >= 0) biometricCache.data[indiceExistente] = registroActualizado;
+                else biometricCache.data.push(registroActualizado);
+                capturaAdminActiva = false;
+
                 alert('✅ Registro biométrico exitoso para ' + conductorSeleccionado.nombre);
-                cancelarCapturaAdmin();
+                document.getElementById('adminStatusMessage').innerText = 'Registro guardado. Puedes probar reconocimiento o repetir captura.';
                 actualizarEstadisticasAdmin();
-                limpiarFormularioRegistro();
+                renderizarPanelBiometricos();
                 
             } catch (error) {
                 alert('Error al registrar: ' + error.message);
@@ -2202,8 +2350,74 @@
             document.getElementById('capturaNombre').innerText = conductorSeleccionado.nombre;
             document.getElementById('adminCedula').disabled = true;
             document.getElementById('btnIniciarCaptura').disabled = true;
+            document.getElementById('adminProgressBar').style.width = '0%';
+            ultimoDescriptorAdmin = null;
             
             await iniciarCamara(adminVideo, 'admin');
+        }
+
+        async function repetirCapturaAdmin() {
+            if (!conductorSeleccionado) {
+                alert('Primero busca y selecciona un conductor.');
+                return;
+            }
+            document.getElementById('adminStatusMessage').innerText = 'Reiniciando captura...';
+            document.getElementById('adminProgressBar').style.width = '0%';
+            capturaAdminActiva = false;
+            ultimoDescriptorAdmin = null;
+            detenerCamara(adminVideo);
+            await iniciarCamara(adminVideo, 'admin');
+        }
+
+        async function probarReconocimientoAdmin() {
+            if (!conductorSeleccionado) {
+                alert('Primero busca y selecciona un conductor.');
+                return;
+            }
+            if (!adminVideo || adminVideo.paused || !adminVideo.srcObject) {
+                alert('La cámara no está activa para hacer la prueba.');
+                return;
+            }
+
+            document.getElementById('adminStatusMessage').innerText = 'Probando reconocimiento...';
+            const descriptor = await capturarDescriptor(adminVideo);
+            if (!descriptor) {
+                alert('No se pudo capturar el rostro para la prueba.');
+                document.getElementById('adminStatusMessage').innerText = 'No se pudo capturar rostro para prueba';
+                return;
+            }
+
+            const biometricos = await biometricCache.get(true);
+            if (!biometricos.length) {
+                alert('No hay registros biométricos para comparar.');
+                document.getElementById('adminStatusMessage').innerText = 'Sin registros biométricos para prueba';
+                return;
+            }
+
+            let mejorDist = 999;
+            let mejorPersona = null;
+            biometricos.forEach(persona => {
+                const dist = faceapi.euclideanDistance(descriptor, persona.descriptor);
+                if (dist < mejorDist) {
+                    mejorDist = dist;
+                    mejorPersona = persona;
+                }
+            });
+
+            const UMBRAL = 0.5;
+            if (mejorPersona && mejorDist < UMBRAL) {
+                const esMismoConductor = normalizarCedula(mejorPersona.cedula) === normalizarCedula(conductorSeleccionado.cedula);
+                if (esMismoConductor) {
+                    alert(`✅ Prueba exitosa: reconocido como ${conductorSeleccionado.nombre} (distancia ${mejorDist.toFixed(3)})`);
+                    document.getElementById('adminStatusMessage').innerText = 'Prueba exitosa: reconocimiento correcto';
+                } else {
+                    alert(`⚠️ Prueba con conflicto: se reconoció como ${mejorPersona.nombre || mejorPersona.cedula} (distancia ${mejorDist.toFixed(3)})`);
+                    document.getElementById('adminStatusMessage').innerText = 'Conflicto: el rostro coincide con otro registro';
+                }
+            } else {
+                alert('❌ Prueba sin coincidencia. Repite la captura para mejorar el registro.');
+                document.getElementById('adminStatusMessage').innerText = 'Sin coincidencia en la prueba';
+            }
         }
 
         function cancelarCapturaAdmin() {
@@ -2213,7 +2427,9 @@
             document.getElementById('btnIniciarCaptura').disabled = false;
             document.getElementById('adminProgressBar').style.width = '0%';
             document.getElementById('adminStatusMessage').innerText = 'Preparando cámara...';
+            ultimoDescriptorAdmin = null;
             conductorSeleccionado = null;
+            limpiarFormularioRegistro();
         }
 
         function limpiarFormularioRegistro() {
@@ -2289,11 +2505,118 @@
         async function cargarBaseBiometricaAdmin() {
             await biometricCache.get(true);
             actualizarEstadisticasAdmin();
+            renderizarPanelBiometricos();
             alert(`✅ ${biometricCache.data.length} registros biométricos cargados`);
         }
 
         function actualizarEstadisticasAdmin() {
             document.getElementById('totalBiometricos').textContent = biometricCache.data.length;
+        }
+
+        function formatearFechaRegistroBiometrico(fechaIso) {
+            if (!fechaIso) return '-';
+            const fecha = new Date(fechaIso);
+            if (Number.isNaN(fecha.getTime())) return '-';
+            return `${fecha.toLocaleDateString('es-CO')} ${fecha.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`;
+        }
+
+        function esConductorHabilitado(status) {
+            const txt = normalizarTextoBusqueda(status || '');
+            if (!txt) return true;
+            const bloqueados = ['disabled', 'deshabilitado', 'inhabilitado', 'inactivo', 'retirado', 'bloqueado', 'suspendido'];
+            return !bloqueados.some(palabra => txt.includes(palabra));
+        }
+
+        function obtenerListaBiometricosConEstado() {
+            return (biometricCache.data || []).map(persona => {
+                const cedula = normalizarCedula(persona.cedula);
+                const conductorSistema = conductoresDB.find(c => normalizarCedula(c.cedula) === cedula);
+                return {
+                    nombre: persona.nombre || conductorSistema?.nombre || '-',
+                    cedula: cedula || '-',
+                    email: persona.email || conductorSistema?.email || '-',
+                    fleet: persona.fleet || conductorSistema?.fleet || '-',
+                    status: persona.status || conductorSistema?.status || '-',
+                    fechaRegistro: persona.fecha_registro || persona.fechaRegistro || '',
+                    existeEnSistema: Boolean(conductorSistema),
+                    habilitado: esConductorHabilitado(persona.status || conductorSistema?.status)
+                };
+            })
+            .filter(item => item.habilitado)
+            .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
+        }
+
+        function filtrarPanelBiometricos() {
+            const input = document.getElementById('filtroBiometricosPanel');
+            filtroBiometricosTexto = normalizarTextoBusqueda(input?.value || '');
+            renderizarPanelBiometricos();
+        }
+
+        function renderizarPanelBiometricos() {
+            const tbodyRegistrados = document.getElementById('biometricosRegistradosBody');
+            const tbodyFaltantes = document.getElementById('biometricosFaltantesBody');
+            const resumen = document.getElementById('biometricosResumen');
+            if (!tbodyRegistrados || !tbodyFaltantes || !resumen) return;
+
+            const biometricosEnSistema = obtenerListaBiometricosConEstado().filter(item => item.existeEnSistema);
+            const cedulasConBiometrico = new Set(biometricosEnSistema.map(item => normalizarCedula(item.cedula)));
+            const faltantesBiometrico = conductoresDB
+                .filter(c => esConductorHabilitado(c.status))
+                .filter(c => !cedulasConBiometrico.has(normalizarCedula(c.cedula)))
+                .map(c => ({
+                    nombre: c.nombre || '-',
+                    cedula: normalizarCedula(c.cedula) || '-',
+                    email: c.email || '-',
+                    fleet: c.fleet || '-',
+                    status: c.status || '-'
+                }))
+                .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
+
+            const filtrarLista = (lista) => filtroBiometricosTexto
+                ? lista.filter(item => {
+                    const textoFila = normalizarTextoBusqueda(
+                        `${item.nombre} ${item.cedula} ${item.email} ${item.fleet}`
+                    );
+                    return textoFila.includes(filtroBiometricosTexto);
+                })
+                : lista;
+
+            const registrados = filtrarLista(biometricosEnSistema);
+            const faltantes = filtrarLista(faltantesBiometrico);
+
+            document.getElementById('totalConBiometrico').textContent = biometricosEnSistema.length;
+            document.getElementById('totalFaltanBiometrico').textContent = faltantesBiometrico.length;
+            resumen.textContent = `Con biométrico: ${registrados.length} | Faltan: ${faltantes.length}`;
+
+            if (registrados.length === 0) {
+                tbodyRegistrados.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#64748b;">No hay resultados</td></tr>';
+            } else {
+                tbodyRegistrados.innerHTML = registrados.map(item => `
+                    <tr>
+                        <td>${item.nombre}</td>
+                        <td>${item.cedula}</td>
+                        <td>${item.email}</td>
+                        <td>${item.fleet}</td>
+                        <td>${item.status}</td>
+                        <td>${formatearFechaRegistroBiometrico(item.fechaRegistro)}</td>
+                    </tr>
+                `).join('');
+            }
+
+            if (faltantes.length === 0) {
+                tbodyFaltantes.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#64748b;">No hay resultados</td></tr>';
+            } else {
+                tbodyFaltantes.innerHTML = faltantes.map(item => `
+                    <tr>
+                        <td>${item.nombre}</td>
+                        <td>${item.cedula}</td>
+                        <td>${item.email}</td>
+                        <td>${item.fleet}</td>
+                        <td>${item.status}</td>
+                        <td><span class="estado-chip warn">Pendiente</span></td>
+                    </tr>
+                `).join('');
+            }
         }
 
         function toBase64(array) {
@@ -2667,6 +2990,8 @@
         window.registrarSalida = registrarSalida;
         window.buscarConductorParaRegistro = buscarConductorParaRegistro;
         window.iniciarCapturaAdmin = iniciarCapturaAdmin;
+        window.repetirCapturaAdmin = repetirCapturaAdmin;
+        window.probarReconocimientoAdmin = probarReconocimientoAdmin;
         window.cancelarCapturaAdmin = cancelarCapturaAdmin;
         window.cargarBaseBiometricaAdmin = cargarBaseBiometricaAdmin;
         window.cerrarSesion = cerrarSesion;
@@ -2677,9 +3002,13 @@
         window.limpiarConsultaTurnos = limpiarConsultaTurnos;
         window.aplicarFiltrosConsulta = aplicarFiltrosConsulta;
         window.cambiarPaginaConsulta = cambiarPaginaConsulta;
+        window.filtrarPanelBiometricos = filtrarPanelBiometricos;
     </script>
 </body>
 </html>
+
+
+       
 
 
 
